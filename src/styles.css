@@ -1,0 +1,156 @@
+/* Reset + popover container */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: rgba(245, 245, 247, 0.92);
+  --bg-card: rgba(255, 255, 255, 0.6);
+  --fg: #1d1d1f;
+  --fg-secondary: #6e6e73;
+  --accent: #007aff;
+  --warn: #ff9500;
+  --danger: #ff3b30;
+  --track: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.08);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: rgba(30, 30, 32, 0.92);
+    --bg-card: rgba(255, 255, 255, 0.06);
+    --fg: #f5f5f7;
+    --fg-secondary: #9a9a9f;
+    --track: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.08);
+  }
+}
+
+body {
+  background: var(--bg);
+  /* macOS popover-style backdrop blur */
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  width: 320px;
+  min-height: 200px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#app {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.card-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.card-subtitle {
+  color: var(--fg-secondary);
+  font-size: 11px;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--fg-secondary);
+}
+
+.progress-track {
+  height: 4px;
+  background: var(--track);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease, background 0.2s;
+  border-radius: 2px;
+}
+
+.progress-fill.warn { background: var(--warn); }
+.progress-fill.danger { background: var(--danger); }
+
+.empty-state {
+  text-align: center;
+  color: var(--fg-secondary);
+  padding: 24px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.btn-link:hover { text-decoration: underline; }
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 4px 0;
+  color: var(--fg-secondary);
+  font-size: 11px;
+}
+
+/* Settings view */
+.settings { display: flex; flex-direction: column; gap: 10px; }
+.settings label { font-size: 11px; color: var(--fg-secondary); }
+.settings input[type=text],
+.settings input[type=password] {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--fg);
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.settings button.primary {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+}
+.settings button.primary:hover { opacity: 0.9; }
