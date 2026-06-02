@@ -19,6 +19,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dirs = "5"
 anyhow = "1"
+# HTTP client with TLS fingerprint impersonation (Safari/Chrome) to pass Cloudflare.
+# wreq is the renamed/current crate (formerly rquest, same maintainer 0x676e67).
+wreq = { version = "5", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+wreq-util = "2"
 
 [profile.release]
 panic = "abort"
