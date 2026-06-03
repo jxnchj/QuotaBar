@@ -2,8 +2,8 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: rgba(245, 245, 247, 0.92);
-  --bg-card: rgba(255, 255, 255, 0.6);
+  --bg: rgba(245, 245, 247, 0.55);
+  --bg-card: rgba(255, 255, 255, 0.45);
   --fg: #1d1d1f;
   --fg-secondary: #6e6e73;
   --accent: #007aff;
@@ -18,8 +18,8 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: rgba(30, 30, 32, 0.92);
-    --bg-card: rgba(255, 255, 255, 0.06);
+    --bg: rgba(30, 30, 32, 0.55);
+    --bg-card: rgba(255, 255, 255, 0.08);
     --fg: #f5f5f7;
     --fg-secondary: #9a9a9f;
     --track: rgba(255, 255, 255, 0.08);
@@ -27,15 +27,25 @@
   }
 }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
 body {
+  /* Frosted glass: more translucent + rounded popover corners */
   background: var(--bg);
-  /* macOS popover-style backdrop blur */
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
   width: 320px;
-  min-height: 200px;
+  min-height: 100px;
   user-select: none;
   -webkit-user-select: none;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 0.5px solid var(--border);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
 
 #app {

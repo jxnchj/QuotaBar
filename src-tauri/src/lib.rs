@@ -1,4 +1,5 @@
 mod claude;
+mod claude_local;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -69,6 +70,7 @@ enum ClaudeSnapshot {
 #[derive(Default)]
 struct UsageCache {
     claude: Arc<Mutex<ClaudeSnapshot>>,
+    claude_local: Arc<Mutex<Option<claude_local::ClaudeTokenSummary>>>,
 }
 
 impl Default for ClaudeSnapshot {
@@ -105,14 +107,22 @@ fn get_claude_snapshot(cache: tauri::State<'_, UsageCache>) -> ClaudeSnapshot {
 }
 
 #[tauri::command]
+fn get_claude_local_summary(
+    cache: tauri::State<'_, UsageCache>,
+) -> Option<claude_local::ClaudeTokenSummary> {
+    cache.claude_local.lock().unwrap().clone()
+}
+
+#[tauri::command]
 async fn refresh_claude_now(app: AppHandle) -> Result<(), String> {
     let cache = app.state::<UsageCache>();
     let cfg = app.state::<ConfigState>();
     let key = cfg.0.lock().unwrap().claude_session_key.clone();
-    let Some(key) = key else {
-        return Err("sessionKey not configured".into());
-    };
-    refresh_claude(&app, &key, &cache.claude).await;
+    if let Some(key) = key {
+        refresh_claude(&app, &key, &cache.claude).await;
+    }
+    // Always refresh local even if no sessionKey configured.
+    refresh_claude_local(&app);
     Ok(())
 }
 
@@ -154,6 +164,16 @@ async fn refresh_claude(
     // Update tray title with quick summary and emit to frontend.
     update_tray_title(app);
     let _ = app.emit("claude-snapshot-updated", ());
+}
+
+fn refresh_claude_local(app: &AppHandle) {
+    // Cheap (~70ms full scan), do it inline.
+    let summary = claude_local::scan_token_history();
+    {
+        let cache = app.state::<UsageCache>();
+        *cache.claude_local.lock().unwrap() = Some(summary);
+    }
+    let _ = app.emit("claude-local-updated", ());
 }
 
 fn update_tray_title(app: &AppHandle) {
@@ -217,6 +237,8 @@ fn spawn_claude_poller(app: AppHandle) {
             if let Some(key) = key {
                 refresh_claude(&app, &key, &cache).await;
             }
+            // Local JSONL scan is independent of sessionKey — always refresh it.
+            refresh_claude_local(&app);
             tokio::time::sleep(Duration::from_secs(300)).await; // 5 minutes
         }
     });
@@ -237,6 +259,7 @@ pub fn run() {
             get_config,
             set_claude_session_key,
             get_claude_snapshot,
+            get_claude_local_summary,
             refresh_claude_now,
         ])
         .setup(|app| {

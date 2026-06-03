@@ -1,6 +1,7 @@
 // QuotaBar frontend: popover with provider progress + settings.
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
 type View = "main" | "settings";
 let currentView: View = "main";
@@ -21,6 +22,22 @@ interface ClaudeUsage {
   seven_day: RateWindow | null;
   seven_day_opus: RateWindow | null;
   seven_day_sonnet: RateWindow | null;
+  fetched_at: string;
+}
+
+interface DailyBucket {
+  date: string;
+  input: number;
+  output: number;
+  cache_create: number;
+  cache_read: number;
+}
+
+interface ClaudeLocalSummary {
+  today: DailyBucket;
+  last_7_days_total: number;
+  daily: DailyBucket[];
+  top_models: [string, number][];
   fetched_at: string;
 }
 
@@ -64,11 +81,13 @@ function progressBar(label: string, w: RateWindow | null | undefined): string {
   if (!w) return "";
   const pct = Math.min(100, Math.max(0, w.percent));
   const cls = severityClass(pct);
+  const reset = fmtRelativeFromNow(w.resets_at);
+  const resetText = reset === "—" ? "" : ` · ${reset} 后重置`;
   return `
     <div class="progress">
       <div class="progress-label">
         <span>${escapeHtml(label)}</span>
-        <span>${pct.toFixed(0)}% · ${escapeHtml(fmtRelativeFromNow(w.resets_at))}</span>
+        <span>已用 ${pct.toFixed(0)}%${escapeHtml(resetText)}</span>
       </div>
       <div class="progress-track">
         <div class="progress-fill ${cls}" style="width: ${pct}%"></div>
@@ -83,6 +102,17 @@ async function loadConfig(): Promise<AppConfig> {
 
 async function loadClaudeSnapshot(): Promise<ClaudeSnapshot> {
   return await invoke<ClaudeSnapshot>("get_claude_snapshot");
+}
+
+async function loadClaudeLocal(): Promise<ClaudeLocalSummary | null> {
+  return await invoke<ClaudeLocalSummary | null>("get_claude_local_summary");
+}
+
+function fmtTokens(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return `${n}`;
 }
 
 async function saveClaudeSessionKey(key: string): Promise<void> {
@@ -158,16 +188,53 @@ function renderClaudeCard(snap: ClaudeSnapshot, configured: boolean): string {
   }
 }
 
+function renderLocalCard(local: ClaudeLocalSummary | null): string {
+  if (!local) return "";
+  const today = local.today.input + local.today.output + local.today.cache_create + local.today.cache_read;
+  if (today === 0 && local.last_7_days_total === 0) return ""; // no local data, hide
+  const topModel = local.top_models[0]?.[0] ?? "—";
+  // Sparkline-ish: just show 7 days as text bars
+  const max = Math.max(1, ...local.daily.map(d => d.input + d.output + d.cache_create + d.cache_read));
+  const bars = local.daily.map(d => {
+    const t = d.input + d.output + d.cache_create + d.cache_read;
+    const blocks = Math.round((t / max) * 8);
+    return "▁▂▃▄▅▆▇█"[blocks] ?? "▁";
+  }).join("");
+  return `<div class="card">
+    <div class="card-header">
+      <div class="card-title">Claude Code 本地</div>
+      <div class="card-subtitle" style="font-family: ui-monospace, monospace;">${bars}</div>
+    </div>
+    <div class="progress-label" style="margin-top: 4px;">
+      <span>今日已消耗</span>
+      <span>${escapeHtml(fmtTokens(today))} tokens</span>
+    </div>
+    <div class="progress-label">
+      <span>近 7 日累计</span>
+      <span>${escapeHtml(fmtTokens(local.last_7_days_total))} tokens</span>
+    </div>
+    <div class="progress-label">
+      <span>主用模型</span>
+      <span style="font-family: ui-monospace, monospace; font-size: 10px;">${escapeHtml(topModel)}</span>
+    </div>
+  </div>`;
+}
+
 async function renderMain() {
-  const [config, snap] = await Promise.all([loadConfig(), loadClaudeSnapshot()]);
+  const [config, snap, local] = await Promise.all([
+    loadConfig(),
+    loadClaudeSnapshot(),
+    loadClaudeLocal(),
+  ]);
   const hasClaude = !!config.claude_session_key;
 
   app.innerHTML = `
     ${renderClaudeCard(snap, hasClaude)}
+    ${renderLocalCard(local)}
     <div class="footer">
       <span>QuotaBar v0.1</span>
       <span>
-        ${hasClaude ? `<button class="btn-link" id="refresh">刷新</button> · ` : ""}
+        <button class="btn-link" id="refresh">刷新</button> ·
         <button class="btn-link" id="footer-settings">设置</button>
       </span>
     </div>
@@ -183,7 +250,6 @@ async function renderMain() {
   });
   document.getElementById("refresh")?.addEventListener("click", async () => {
     await refreshClaudeNow();
-    // Snapshot update will arrive via event; manual re-render is just for instant feedback.
     await render();
   });
 }
@@ -229,16 +295,32 @@ async function renderSettings() {
   });
 }
 
+async function autoResize() {
+  // Measure actual rendered height and shrink window to fit.
+  // requestAnimationFrame waits one frame for layout to settle after innerHTML changes.
+  await new Promise(requestAnimationFrame);
+  const h = Math.max(100, Math.ceil(document.body.scrollHeight));
+  try {
+    await getCurrentWindow().setSize(new LogicalSize(320, h));
+  } catch (e) {
+    console.warn("setSize failed:", e);
+  }
+}
+
 async function render() {
   if (currentView === "settings") {
     await renderSettings();
   } else {
     await renderMain();
   }
+  await autoResize();
 }
 
-// Subscribe to backend pushes (Rust emits "claude-snapshot-updated" after each fetch).
+// Subscribe to backend pushes (Rust emits these after each fetch).
 listen("claude-snapshot-updated", () => {
+  if (currentView === "main") render();
+});
+listen("claude-local-updated", () => {
   if (currentView === "main") render();
 });
 

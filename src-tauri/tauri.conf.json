@@ -17,7 +17,7 @@
         "label": "popover",
         "title": "QuotaBar",
         "width": 320,
-        "height": 240,
+        "height": 480,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -25,7 +25,7 @@
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "focus": false,
-        "shadow": true,
+        "shadow": false,
         "url": "index.html"
       }
     ],
