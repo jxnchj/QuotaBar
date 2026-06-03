@@ -2,8 +2,10 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: rgba(245, 245, 247, 0.55);
-  --bg-card: rgba(255, 255, 255, 0.45);
+  --bg: rgba(245, 245, 247, 0.60);
+  /* Card barely tinted — popover already provides the visual surface.
+     A subtle border line gives the grouping cue without a heavy fill. */
+  --bg-card: rgba(255, 255, 255, 0.12);
   --fg: #1d1d1f;
   --fg-secondary: #6e6e73;
   --accent: #007aff;
@@ -18,8 +20,8 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: rgba(30, 30, 32, 0.55);
-    --bg-card: rgba(255, 255, 255, 0.08);
+    --bg: rgba(30, 30, 32, 0.60);
+    --bg-card: rgba(255, 255, 255, 0.04);
     --fg: #f5f5f7;
     --fg-secondary: #9a9a9f;
     --track: rgba(255, 255, 255, 0.08);
@@ -31,21 +33,33 @@ html, body {
   margin: 0;
   padding: 0;
   background: transparent;
-}
-
-body {
-  /* Frosted glass: more translucent + rounded popover corners */
-  background: var(--bg);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  backdrop-filter: blur(28px) saturate(180%);
   width: 320px;
-  min-height: 100px;
   user-select: none;
   -webkit-user-select: none;
-  overflow: hidden;
+}
+
+/* The actual popover surface — backdrop blur + rounded corners live HERE,
+   not on body. body stays transparent so window corners outside this div
+   show the desktop, not a white/grey webview rectangle.
+   clip-path: WebKit doesn't clip backdrop-filter to border-radius, so without
+   this the blurred backdrop leaks into square bounding box. */
+#popover {
+  position: relative;
+  margin: 4px;                            /* leave room for outer shadow */
+  background: var(--bg);
+  /* Heavy frosted glass — push blur radius high so live compositing also looks
+     properly opaque (WKWebView sometimes downgrades blur quality real-time). */
+  -webkit-backdrop-filter: blur(80px) saturate(200%);
+  backdrop-filter: blur(80px) saturate(200%);
   border-radius: 14px;
   border: 0.5px solid var(--border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+  clip-path: inset(0 round 14px);
+  /* Force GPU compositing layer so blur is computed at full quality each frame. */
+  transform: translateZ(0);
+  will-change: backdrop-filter;
+  /* DO NOT add `isolation: isolate` — it kills backdrop-filter sampling. */
 }
 
 #app {
