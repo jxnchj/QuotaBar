@@ -1,5 +1,7 @@
 mod claude;
 mod claude_local;
+mod codex;
+mod codex_local;
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -67,10 +69,25 @@ enum ClaudeSnapshot {
     },
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum CodexSnapshot {
+    Idle,
+    Loading,
+    Ok(codex::CodexUsage),
+    Error { message: String },
+}
+
+impl Default for CodexSnapshot {
+    fn default() -> Self { CodexSnapshot::Idle }
+}
+
 #[derive(Default)]
 struct UsageCache {
     claude: Arc<Mutex<ClaudeSnapshot>>,
     claude_local: Arc<Mutex<Option<claude_local::ClaudeTokenSummary>>>,
+    codex: Arc<Mutex<CodexSnapshot>>,
+    codex_local: Arc<Mutex<Option<codex_local::CodexLocalSummary>>>,
 }
 
 impl Default for ClaudeSnapshot {
@@ -114,6 +131,18 @@ fn get_claude_local_summary(
 }
 
 #[tauri::command]
+fn get_codex_snapshot(cache: tauri::State<'_, UsageCache>) -> CodexSnapshot {
+    cache.codex.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_codex_local_summary(
+    cache: tauri::State<'_, UsageCache>,
+) -> Option<codex_local::CodexLocalSummary> {
+    cache.codex_local.lock().unwrap().clone()
+}
+
+#[tauri::command]
 async fn refresh_claude_now(app: AppHandle) -> Result<(), String> {
     let cache = app.state::<UsageCache>();
     let cfg = app.state::<ConfigState>();
@@ -123,6 +152,8 @@ async fn refresh_claude_now(app: AppHandle) -> Result<(), String> {
     }
     // Always refresh local even if no sessionKey configured.
     refresh_claude_local(&app);
+    refresh_codex(&app).await;
+    refresh_codex_local(&app);
     Ok(())
 }
 
@@ -225,6 +256,32 @@ fn position_popover_near(window: &WebviewWindow, tray_pos: PhysicalPosition<f64>
 
 // --- Background scheduler ---------------------------------------------------
 
+fn refresh_codex_local(app: &AppHandle) {
+    let summary = codex_local::scan_token_history();
+    *app.state::<UsageCache>().codex_local.lock().unwrap() = summary;
+    let _ = app.emit("codex-local-updated", ());
+}
+
+async fn refresh_codex(app: &AppHandle) {
+    {
+        let cache = app.state::<UsageCache>();
+        let mut s = cache.codex.lock().unwrap();
+        if matches!(*s, CodexSnapshot::Idle | CodexSnapshot::Error { .. }) {
+            *s = CodexSnapshot::Loading;
+        }
+    }
+    let result = codex::fetch().await;
+    {
+        let cache = app.state::<UsageCache>();
+        let mut s = cache.codex.lock().unwrap();
+        *s = match result {
+            Ok(data) => CodexSnapshot::Ok(data),
+            Err(e) => CodexSnapshot::Error { message: e.to_string() },
+        };
+    }
+    let _ = app.emit("codex-snapshot-updated", ());
+}
+
 fn spawn_claude_poller(app: AppHandle) {
     let cache = app.state::<UsageCache>().claude.clone();
     tauri::async_runtime::spawn(async move {
@@ -239,6 +296,9 @@ fn spawn_claude_poller(app: AppHandle) {
             }
             // Local JSONL scan is independent of sessionKey — always refresh it.
             refresh_claude_local(&app);
+            // Codex wham/usage + local sqlite.
+            refresh_codex(&app).await;
+            refresh_codex_local(&app);
             tokio::time::sleep(Duration::from_secs(300)).await; // 5 minutes
         }
     });
@@ -260,6 +320,8 @@ pub fn run() {
             set_claude_session_key,
             get_claude_snapshot,
             get_claude_local_summary,
+            get_codex_snapshot,
+            get_codex_local_summary,
             refresh_claude_now,
         ])
         .setup(|app| {

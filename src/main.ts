@@ -108,6 +108,116 @@ async function loadClaudeLocal(): Promise<ClaudeLocalSummary | null> {
   return await invoke<ClaudeLocalSummary | null>("get_claude_local_summary");
 }
 
+interface CodexWindow {
+  percent: number;
+  window_label: string;
+  resets_at: string | null;
+}
+
+interface CodexUsage {
+  primary: CodexWindow | null;
+  secondary: CodexWindow | null;
+  plan_type: string | null;
+  fetched_at: string;
+}
+
+type CodexSnapshot =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "ok" } & CodexUsage
+  | { status: "error"; message: string };
+
+async function loadCodexSnapshot(): Promise<CodexSnapshot> {
+  return await invoke<CodexSnapshot>("get_codex_snapshot");
+}
+
+interface CodexLocalBucket {
+  date: string;
+  tokens: number;
+  sessions: number;
+}
+
+interface CodexLocalSummary {
+  today_tokens: number;
+  today_sessions: number;
+  last_7_days_total: number;
+  daily: CodexLocalBucket[];
+  top_models: [string, number][];
+  fetched_at: string;
+}
+
+async function loadCodexLocal(): Promise<CodexLocalSummary | null> {
+  return await invoke<CodexLocalSummary | null>("get_codex_local_summary");
+}
+
+function renderCodexLocalSection(local: CodexLocalSummary | null): string {
+  if (!local || (local.today_tokens === 0 && local.last_7_days_total === 0)) return "";
+  const max = Math.max(1, ...local.daily.map(d => d.tokens));
+  const bars = local.daily.map(d => "▁▂▃▄▅▆▇█"[Math.round((d.tokens / max) * 8)] ?? "▁").join("");
+  const topModel = local.top_models[0]?.[0] ?? "—";
+  return `
+    <div style="border-top: 0.5px solid var(--border); margin-top: 6px; padding-top: 6px;">
+      <div class="progress-label" style="margin-bottom:2px;">
+        <span style="color:var(--fg-secondary);font-size:11px;">本地用量</span>
+        <span style="font-family:ui-monospace,monospace;font-size:10px;color:var(--fg-secondary);">${bars}</span>
+      </div>
+      <div class="progress-label">
+        <span>今日已消耗</span>
+        <span>${escapeHtml(fmtTokens(local.today_tokens))} tokens · ${local.today_sessions} 个会话</span>
+      </div>
+      <div class="progress-label">
+        <span>近 7 日累计</span>
+        <span>${escapeHtml(fmtTokens(local.last_7_days_total))} tokens</span>
+      </div>
+      <div class="progress-label">
+        <span>主用模型</span>
+        <span style="font-family:ui-monospace,monospace;font-size:10px;">${escapeHtml(topModel)}</span>
+      </div>
+    </div>`;
+}
+
+function renderCodexCard(snap: CodexSnapshot, local: CodexLocalSummary | null = null): string {
+  const title = `<div class="card-title">Codex</div>`;
+  if (snap.status === "idle" || snap.status === "loading") {
+    return `<div class="card"><div class="card-header">${title}<div class="card-subtitle">加载中…</div></div></div>`;
+  }
+  if (snap.status === "error") {
+    // Don't show card if just missing auth file (not installed / not logged in)
+    if (snap.message.includes("不存在")) return "";
+    return `<div class="card"><div class="card-header">${title}
+      <div class="card-subtitle" style="color:var(--danger);">失败</div></div>
+      <div class="card-subtitle" style="margin-top:4px;">${escapeHtml(snap.message)}</div>
+    </div>`;
+  }
+  // ok
+  const ago = Math.max(0, Math.floor((Date.now() - new Date(snap.fetched_at).getTime()) / 1000));
+  const agoText = ago < 60 ? `${ago}s ago` : `${Math.floor(ago / 60)}m ago`;
+
+  const planLabel = snap.plan_type ? `<span class="card-subtitle">${escapeHtml(snap.plan_type)} · ${agoText}</span>` : `<span class="card-subtitle">${agoText}</span>`;
+
+  const barHtml = (w: CodexWindow | null, label: string) => {
+    if (!w) return "";
+    const pct = Math.min(100, Math.max(0, w.percent));
+    const cls = pct >= 90 ? "danger" : pct >= 70 ? "warn" : "";
+    const reset = fmtRelativeFromNow(w.resets_at);
+    const resetText = reset === "—" ? "" : ` · ${reset} 后重置`;
+    return `<div class="progress">
+      <div class="progress-label">
+        <span>${escapeHtml(label)} (${escapeHtml(w.window_label)})</span>
+        <span>已用 ${pct.toFixed(0)}%${escapeHtml(resetText)}</span>
+      </div>
+      <div class="progress-track"><div class="progress-fill ${cls}" style="width:${pct}%"></div></div>
+    </div>`;
+  };
+
+  return `<div class="card">
+    <div class="card-header">${title}${planLabel}</div>
+    ${barHtml(snap.primary, "5h 滚动窗口")}
+    ${barHtml(snap.secondary, "7d 周额度")}
+    ${renderCodexLocalSection(local)}
+  </div>`;
+}
+
 function fmtTokens(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -221,16 +331,19 @@ function renderLocalCard(local: ClaudeLocalSummary | null): string {
 }
 
 async function renderMain() {
-  const [config, snap, local] = await Promise.all([
+  const [config, snap, local, codex, codexLocal] = await Promise.all([
     loadConfig(),
     loadClaudeSnapshot(),
     loadClaudeLocal(),
+    loadCodexSnapshot(),
+    loadCodexLocal(),
   ]);
   const hasClaude = !!config.claude_session_key;
 
   app.innerHTML = `
     ${renderClaudeCard(snap, hasClaude)}
     ${renderLocalCard(local)}
+    ${renderCodexCard(codex, codexLocal)}
     <div class="footer">
       <span>QuotaBar v0.1</span>
       <span>
@@ -321,6 +434,12 @@ listen("claude-snapshot-updated", () => {
   if (currentView === "main") render();
 });
 listen("claude-local-updated", () => {
+  if (currentView === "main") render();
+});
+listen("codex-snapshot-updated", () => {
+  if (currentView === "main") render();
+});
+listen("codex-local-updated", () => {
   if (currentView === "main") render();
 });
 
