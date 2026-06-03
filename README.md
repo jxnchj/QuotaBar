@@ -55,6 +55,21 @@ npm run tauri dev      # run in development
 npm run tauri build    # build a release .app / .dmg
 ```
 
+## Usage
+
+QuotaBar lives in the menu bar (no Dock icon):
+
+1. The menu-bar text shows a compact summary, e.g. `C 87% · Cx 44%`.
+2. **Click it** to open the popover with full per-provider details.
+3. Open **Settings** (bottom of the popover) to:
+   - paste your Claude `sessionKey` (claude.ai → DevTools → Application → Cookies → `sessionKey`);
+   - optionally paste a Kimi `kimi-auth` token — otherwise it is read from Chrome
+     automatically (approve the one-time keychain prompt);
+   - choose which providers appear in the menu-bar summary (up to two).
+4. Codex needs no setup beyond having logged in with the Codex CLI.
+
+Usage refreshes automatically every few minutes.
+
 ## Acknowledgements
 
 The Codex and Kimi usage endpoints were worked out with reference to the

@@ -2,7 +2,7 @@
 name = "quotabar"
 version = "0.1.0"
 description = "Menu-bar quota tracker for Claude / Codex CLI / Kimi"
-authors = ["Hanson"]
+authors = ["jxnchj"]
 edition = "2021"
 rust-version = "1.77"
 
