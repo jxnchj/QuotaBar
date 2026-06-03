@@ -178,3 +178,21 @@ html, body {
   font-weight: 500;
 }
 .settings button.primary:hover { opacity: 0.9; }
+
+.menubar-opts { display: flex; gap: 14px; margin-top: 4px; }
+.menubar-opts .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.menubar-opts input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+.settings code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  background: var(--track);
+  padding: 1px 4px;
+  border-radius: 4px;
+}

@@ -39,6 +39,63 @@ impl std::error::Error for FetchError {}
 #[derive(Debug, Deserialize)]
 struct OrganizationRaw {
     uuid: String,
+    #[serde(default)]
+    rate_limit_tier: Option<String>,
+    #[serde(default)]
+    capabilities: Option<Vec<String>>,
+}
+
+impl OrganizationRaw {
+    /// A subscription org (Max/Pro/Team/…) vs. an API/eval org. The account can
+    /// list several orgs; we want the one whose usage windows we display.
+    fn is_subscription(&self) -> bool {
+        let cap = self
+            .capabilities
+            .as_ref()
+            .map(|c| c.iter().any(|x| x.starts_with("claude_")))
+            .unwrap_or(false);
+        let tier = self
+            .rate_limit_tier
+            .as_deref()
+            .map(|t| t.starts_with("default_claude_"))
+            .unwrap_or(false);
+        cap || tier
+    }
+
+    /// Friendly subscription label, e.g. "Max 5x", "Max 20x", "Pro", "Team".
+    fn plan_label(&self) -> Option<String> {
+        let tier = self.rate_limit_tier.as_deref().unwrap_or("");
+        let label = if tier.contains("max_20x") {
+            "Max 20x"
+        } else if tier.contains("max_5x") {
+            "Max 5x"
+        } else if tier.contains("max") {
+            "Max"
+        } else if tier.contains("team") {
+            "Team"
+        } else if tier.contains("enterprise") {
+            "Enterprise"
+        } else if tier.contains("pro") {
+            "Pro"
+        } else if tier.contains("free") {
+            "Free"
+        } else {
+            ""
+        };
+        if !label.is_empty() {
+            return Some(label.to_string());
+        }
+        // Fall back to capabilities if the tier string is unfamiliar.
+        if let Some(caps) = &self.capabilities {
+            if caps.iter().any(|c| c == "claude_max") {
+                return Some("Max".into());
+            }
+            if caps.iter().any(|c| c == "claude_pro") {
+                return Some("Pro".into());
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +145,7 @@ pub struct ClaudeUsage {
     pub seven_day: Option<RateWindow>,
     pub seven_day_opus: Option<RateWindow>,
     pub seven_day_sonnet: Option<RateWindow>,
+    pub plan: Option<String>,
     pub fetched_at: DateTime<Utc>,
 }
 
@@ -138,11 +196,14 @@ pub async fn fetch(session_key: &str) -> Result<ClaudeUsage, FetchError> {
         .json()
         .await
         .map_err(|e| FetchError::BadResponse(format!("parse organizations: {e}")))?;
-    let org_id = orgs
-        .first()
-        .ok_or(FetchError::NoOrganization)?
-        .uuid
-        .clone();
+    // Prefer a real subscription org over an API/eval org; fall back to the first.
+    let org = orgs
+        .iter()
+        .find(|o| o.is_subscription())
+        .or_else(|| orgs.first())
+        .ok_or(FetchError::NoOrganization)?;
+    let org_id = org.uuid.clone();
+    let plan = org.plan_label();
 
     // Step 2: pull usage for that org.
     let url = format!("{BASE}/organizations/{org_id}/usage");
@@ -186,6 +247,7 @@ pub async fn fetch(session_key: &str) -> Result<ClaudeUsage, FetchError> {
         seven_day: raw.seven_day.map(Into::into),
         seven_day_opus: raw.seven_day_opus.map(Into::into),
         seven_day_sonnet: raw.seven_day_sonnet.map(Into::into),
+        plan,
         fetched_at: Utc::now(),
     })
 }

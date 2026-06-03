@@ -25,6 +25,9 @@ wreq = { version = "5", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
 wreq-util = "2"
+# Decode the Kimi auth JWT payload to extract session headers (device_id/ssid/sub).
+base64 = "0.22"
+rookie = "0.5.6"
 
 [profile.release]
 panic = "abort"
