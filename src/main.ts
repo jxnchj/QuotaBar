@@ -179,14 +179,13 @@ async function loadKimiSnapshot(): Promise<KimiSnapshot> {
 
 function renderCodexLocalSection(local: CodexLocalSummary | null): string {
   if (!local || (local.today_tokens === 0 && local.last_7_days_total === 0)) return "";
-  const max = Math.max(1, ...local.daily.map(d => d.tokens));
-  const bars = local.daily.map(d => "▁▂▃▄▅▆▇█"[Math.round((d.tokens / max) * 8)] ?? "▁").join("");
+  const chart = miniBars(local.daily.map(d => ({ label: d.date.slice(5), value: d.tokens })));
   const topModel = local.top_models[0]?.[0] ?? "—";
   return `
     <div style="border-top: 0.5px solid var(--border); margin-top: 6px; padding-top: 6px;">
-      <div class="progress-label" style="margin-bottom:2px;">
+      <div class="progress-label" style="margin-bottom:4px; align-items:center;">
         <span style="color:var(--fg-secondary);font-size:11px;">本地用量</span>
-        <span style="font-family:ui-monospace,monospace;font-size:10px;color:var(--fg-secondary);">${bars}</span>
+        ${chart}
       </div>
       <div class="progress-label">
         <span>今日已消耗</span>
@@ -286,6 +285,23 @@ function renderKimiCard(snap: KimiSnapshot): string {
   </div>`;
 }
 
+// A compact real bar chart (replaces the unreadable unicode-block sparkline).
+// Each bar's height is proportional to that day's value; the last bar (today)
+// is highlighted, and every bar has a hover tooltip with the exact value.
+function miniBars(points: { label: string; value: number }[]): string {
+  if (points.length === 0) return "";
+  const max = Math.max(1, ...points.map((p) => p.value));
+  const bars = points
+    .map((p, i) => {
+      const pct = Math.round((p.value / max) * 100);
+      const today = i === points.length - 1;
+      const tip = `${p.label} · ${fmtTokens(p.value)} tokens`;
+      return `<span class="bar${today ? " bar-today" : ""}" style="height:${Math.max(6, pct)}%" title="${escapeHtml(tip)}"></span>`;
+    })
+    .join("");
+  return `<span class="minibars" title="近 7 日每日用量（最右=今日，悬停看具体数值）">${bars}</span>`;
+}
+
 function fmtTokens(n: number): string {
   if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(2)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -328,17 +344,16 @@ function renderClaudeLocalSection(local: ClaudeLocalSummary | null): string {
   if (!local) return "";
   const today = local.today.input + local.today.output + local.today.cache_create + local.today.cache_read;
   if (today === 0 && local.last_7_days_total === 0) return "";
-  const max = Math.max(1, ...local.daily.map(d => d.input + d.output + d.cache_create + d.cache_read));
-  const bars = local.daily.map(d => {
-    const t = d.input + d.output + d.cache_create + d.cache_read;
-    return "▁▂▃▄▅▆▇█"[Math.round((t / max) * 8)] ?? "▁";
-  }).join("");
+  const chart = miniBars(local.daily.map(d => ({
+    label: d.date.slice(5),
+    value: d.input + d.output + d.cache_create + d.cache_read,
+  })));
   const topModel = local.top_models[0]?.[0] ?? "—";
   return `
     <div style="border-top: 0.5px solid var(--border); margin-top: 6px; padding-top: 6px;">
-      <div class="progress-label" style="margin-bottom:2px;">
+      <div class="progress-label" style="margin-bottom:4px; align-items:center;">
         <span style="color:var(--fg-secondary);font-size:11px;">本地用量 · Claude Code</span>
-        <span style="font-family:ui-monospace,monospace;font-size:10px;color:var(--fg-secondary);">${bars}</span>
+        ${chart}
       </div>
       <div class="progress-label">
         <span>今日已消耗</span>

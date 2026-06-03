@@ -196,3 +196,23 @@ html, body {
   padding: 1px 4px;
   border-radius: 4px;
 }
+
+/* Mini 7-day bar chart for local usage (replaces the unicode sparkline). */
+.minibars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  width: 104px;
+}
+.minibars .bar {
+  flex: 1 1 0;
+  min-height: 2px;
+  background: var(--fg-secondary);
+  opacity: 0.3;
+  border-radius: 2px 2px 0 0;
+}
+.minibars .bar-today {
+  background: var(--accent);
+  opacity: 1;
+}
