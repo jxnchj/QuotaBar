@@ -2,7 +2,7 @@
 // Files live at ~/.claude/projects/<dir>/*.jsonl, one JSON event per line.
 // We only care about assistant messages: { type: "assistant", message: { model, usage: {...} }, timestamp }.
 
-use chrono::{DateTime, Datelike, Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
