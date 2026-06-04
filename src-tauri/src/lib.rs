@@ -507,7 +507,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&quit_item])?;
 
             let _tray: TrayIcon = TrayIconBuilder::with_id("main-tray")
-                .icon(include_image!("./icons/icon.png"))
+                .icon(include_image!("./icons/tray.png"))
                 .icon_as_template(true)
                 .title("Q")
                 .menu(&menu)

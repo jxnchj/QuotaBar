@@ -1,0 +1,56 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="170" y1="120" x2="870" y2="920" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F2F2F5"/>
+      <stop offset="1" stop-color="#D2D2D9"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx="408" cy="232" r="680" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.75"/>
+      <stop offset="0.55" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="edge" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.55"/>
+      <stop offset="0.05" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.9" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#1A1A22" stop-opacity="0.16"/>
+    </linearGradient>
+    <linearGradient id="qfill" x1="330" y1="300" x2="780" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2E2E34"/>
+      <stop offset="0.55" stop-color="#19191C"/>
+      <stop offset="1" stop-color="#0F0F12"/>
+    </linearGradient>
+    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="185" ry="185"/></clipPath>
+    <!-- two-layer cast shadow: contact + ambient, light from upper-left -->
+    <filter id="cast" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="24" result="ab"/>
+      <feOffset in="ab" dx="14" dy="22" result="ao"/>
+      <feFlood flood-color="#14141C" flood-opacity="0.20" result="ac"/>
+      <feComposite in="ac" in2="ao" operator="in" result="amb"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="6" result="cb"/>
+      <feOffset in="cb" dx="6" dy="9" result="co"/>
+      <feFlood flood-color="#0E0E16" flood-opacity="0.34" result="cc"/>
+      <feComposite in="cc" in2="co" operator="in" result="con"/>
+      <feMerge>
+        <feMergeNode in="amb"/>
+        <feMergeNode in="con"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- gray squircle as a lit material block -->
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#bg)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#sheen)" clip-path="url(#sq)"/>
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#edge)" clip-path="url(#sq)"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="184" ry="184" fill="none" stroke="#FFFFFF" stroke-opacity="0.65" stroke-width="2"/>
+  <rect x="100.75" y="100.75" width="822.5" height="822.5" rx="184.5" ry="184.5" fill="none" stroke="#000000" stroke-opacity="0.06" stroke-width="1.5"/>
+
+  <!-- Q = ring + slender near-horizontal leaf, with realistic two-layer shadow -->
+  <g clip-path="url(#sq)">
+    <g filter="url(#cast)">
+      <path d="M 676 642 Q 796 631 870 726 Q 750 737 676 642 Z" fill="url(#qfill)"/>
+      <circle cx="512" cy="498" r="250" fill="none" stroke="url(#qfill)" stroke-width="50"/>
+    </g>
+  </g>
+</svg>
