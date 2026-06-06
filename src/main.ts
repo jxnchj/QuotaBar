@@ -3,8 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 
-type View = "main" | "settings";
+type View = "main" | "settings" | "about";
 let currentView: View = "main";
+let aboutVersion = "0.1.0"; // set from the tray "关于" event payload
 
 const app = document.getElementById("app")!;
 
@@ -455,26 +456,13 @@ async function renderMain() {
     ${renderClaudeCard(snap, hasClaude, local)}
     ${renderCodexCard(codex, codexLocal)}
     ${renderKimiCard(kimi)}
-    <div class="footer">
-      <span>QuotaBar v0.1</span>
-      <span>
-        <button class="btn-link" id="refresh">刷新</button> ·
-        <button class="btn-link" id="footer-settings">设置</button>
-      </span>
-    </div>
   `;
 
+  // Settings is opened from the tray right-click menu (or the empty-state link);
+  // refresh happens automatically when the popover opens (left-click).
   document.getElementById("open-settings")?.addEventListener("click", () => {
     currentView = "settings";
     render();
-  });
-  document.getElementById("footer-settings")?.addEventListener("click", () => {
-    currentView = "settings";
-    render();
-  });
-  document.getElementById("refresh")?.addEventListener("click", async () => {
-    await refreshClaudeNow();
-    await render();
   });
 }
 
@@ -549,9 +537,16 @@ async function renderSettings() {
   });
   enforceMenubarCap();
 
-  document.getElementById("cancel")?.addEventListener("click", () => {
+  // Closing settings dismisses the popover (it was opened on its own from the
+  // tray menu). Reset to the main view + re-render into the hidden window so the
+  // next left-click opens straight to the data view.
+  const closeSettings = async () => {
     currentView = "main";
-    render();
+    await getCurrentWindow().hide();
+    await render();
+  };
+  document.getElementById("cancel")?.addEventListener("click", () => {
+    void closeSettings();
   });
   document.getElementById("save")?.addEventListener("click", async () => {
     const claudeKey = (document.getElementById("claude-key") as HTMLInputElement).value.trim();
@@ -560,8 +555,7 @@ async function renderSettings() {
     await saveKimiToken(kimiTok);
     // refresh_claude_now refreshes all providers (Claude/Codex/Kimi + locals).
     refreshClaudeNow();
-    currentView = "main";
-    await render();
+    await closeSettings();
   });
 }
 
@@ -587,10 +581,34 @@ async function autoResize() {
 async function render() {
   if (currentView === "settings") {
     await renderSettings();
+  } else if (currentView === "about") {
+    renderAbout();
   } else {
     await renderMain();
   }
   await autoResize();
+}
+
+function renderAbout() {
+  app.innerHTML = `
+    <div class="about">
+      <img class="about-icon" src="/icon.png" alt="QuotaBar" />
+      <div class="about-name">QuotaBar</div>
+      <div class="about-ver">v${escapeHtml(aboutVersion)}</div>
+      <div class="about-desc">菜单栏里一眼查看 Claude / Codex / Kimi 的订阅额度,无需打开各家网页设置页。</div>
+      <div class="about-usage">
+        <div>· <b>左键</b>点图标 — 打开浮窗并立即刷新</div>
+        <div>· <b>右键</b>点图标 — 设置 / 开机自启 / 关于</div>
+        <div>· 设置里填入 Claude 的 sessionKey;Kimi 自动从 Chrome 读取</div>
+      </div>
+      <div class="about-link">github.com/jxnchj/QuotaBar</div>
+      <button class="primary" id="about-close">完成</button>
+    </div>`;
+  document.getElementById("about-close")?.addEventListener("click", async () => {
+    currentView = "main";
+    await getCurrentWindow().hide();
+    await render();
+  });
 }
 
 // Subscribe to backend pushes (Rust emits these after each fetch).
@@ -608,6 +626,17 @@ listen("codex-local-updated", () => {
 });
 listen("kimi-snapshot-updated", () => {
   if (currentView === "main") render();
+});
+// Tray right-click "设置" opens the settings view.
+listen("open-settings", () => {
+  currentView = "settings";
+  render();
+});
+// Tray right-click "关于" opens the about view (payload = version string).
+listen<string>("open-about", (event) => {
+  if (event.payload) aboutVersion = event.payload;
+  currentView = "about";
+  render();
 });
 
 window.addEventListener("DOMContentLoaded", () => {

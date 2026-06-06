@@ -11,10 +11,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
     include_image,
-    menu::{Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
 };
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+
+// Remembers the last tray-icon click position so the right-click "设置" menu item
+// can place the popover near the menubar icon too.
+#[derive(Default)]
+struct TrayPos(Mutex<Option<PhysicalPosition<f64>>>);
 
 // --- Config persistence -----------------------------------------------------
 
@@ -357,6 +363,9 @@ fn toggle_popover(app: &AppHandle, tray_pos: Option<PhysicalPosition<f64>>) {
     }
     let _ = window.show();
     let _ = window.set_focus();
+    // Opening the popover triggers an immediate refresh so numbers are current.
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move { refresh_all(&app2).await; });
 }
 
 fn position_popover_near(window: &WebviewWindow, tray_pos: PhysicalPosition<f64>) {
@@ -450,6 +459,23 @@ async fn refresh_kimi(app: &AppHandle) {
     let _ = app.emit("kimi-snapshot-updated", ());
 }
 
+/// Refresh every provider once (used when the popover is opened by a left-click).
+async fn refresh_all(app: &AppHandle) {
+    let key: Option<String> = {
+        let cfg = app.state::<ConfigState>();
+        let guard = cfg.0.lock().unwrap();
+        guard.claude_session_key.clone()
+    };
+    if let Some(key) = key {
+        let snap = app.state::<UsageCache>().claude.clone();
+        refresh_claude(app, &key, &snap).await;
+    }
+    refresh_claude_local(app);
+    refresh_codex(app).await;
+    refresh_codex_local(app);
+    refresh_kimi(app).await;
+}
+
 fn spawn_claude_poller(app: AppHandle) {
     let cache = app.state::<UsageCache>().claude.clone();
     tauri::async_runtime::spawn(async move {
@@ -483,8 +509,10 @@ pub fn run() {
     let cache = UsageCache::default();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .manage(cfg_state)
         .manage(cache)
+        .manage(TrayPos::default())
         .invoke_handler(tauri::generate_handler![
             get_config,
             set_claude_session_key,
@@ -503,8 +531,26 @@ pub fn run() {
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
 
-            let quit_item = MenuItem::with_id(app, "quit", "Quit QuotaBar", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_item])?;
+            // Right-click menu: 设置 / 开机自启(toggle) / 关于(名称+版本) / 退出
+            let autostart_on = app.autolaunch().is_enabled().unwrap_or(false);
+            let settings_item = MenuItem::with_id(app, "settings", "设置…", true, None::<&str>)?;
+            let autostart_item =
+                CheckMenuItem::with_id(app, "autostart", "开机自启", true, autostart_on, None::<&str>)?;
+            let about_item = MenuItem::with_id(
+                app,
+                "about",
+                format!("关于 QuotaBar v{}", app.package_info().version),
+                true, // clickable — shows an About dialog
+                None::<&str>,
+            )?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出 QuotaBar", true, None::<&str>)?;
+            let sep1 = PredefinedMenuItem::separator(app)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(
+                app,
+                &[&settings_item, &autostart_item, &sep1, &about_item, &sep2, &quit_item],
+            )?;
+            let autostart_cb = autostart_item.clone();
 
             let _tray: TrayIcon = TrayIconBuilder::with_id("main-tray")
                 .icon(include_image!("./icons/tray.png"))
@@ -512,20 +558,47 @@ pub fn run() {
                 .title("Q")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
+                .on_menu_event(move |app, event| {
                     if event.id == "quit" {
                         app.exit(0);
+                    } else if event.id == "settings" {
+                        if let Some(w) = app.get_webview_window("popover") {
+                            if let Some(pos) = *app.state::<TrayPos>().0.lock().unwrap() {
+                                position_popover_near(&w, pos);
+                            }
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                            let _ = app.emit("open-settings", ());
+                        }
+                    } else if event.id == "autostart" {
+                        let mgr = app.autolaunch();
+                        let on = mgr.is_enabled().unwrap_or(false);
+                        let _ = if on { mgr.disable() } else { mgr.enable() };
+                        let _ = autostart_cb.set_checked(!on);
+                    } else if event.id == "about" {
+                        if let Some(w) = app.get_webview_window("popover") {
+                            if let Some(pos) = *app.state::<TrayPos>().0.lock().unwrap() {
+                                position_popover_near(&w, pos);
+                            }
+                            let _ = w.show();
+                            let _ = w.set_focus();
+                            let _ = app.emit("open-about", app.package_info().version.to_string());
+                        }
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
+                        button,
                         button_state: MouseButtonState::Up,
                         position,
                         ..
                     } = event
                     {
-                        toggle_popover(tray.app_handle(), Some(position));
+                        let app = tray.app_handle();
+                        *app.state::<TrayPos>().0.lock().unwrap() = Some(position);
+                        if button == MouseButton::Left {
+                            toggle_popover(app, Some(position));
+                        }
                     }
                 })
                 .build(app)?;

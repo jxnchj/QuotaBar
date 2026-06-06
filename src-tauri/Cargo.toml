@@ -28,6 +28,8 @@ wreq-util = "2"
 # Decode the Kimi auth JWT payload to extract session headers (device_id/ssid/sub).
 base64 = "0.22"
 rookie = "0.5.6"
+# Launch-at-login toggle for the tray menu.
+tauri-plugin-autostart = "2"
 
 [profile.release]
 panic = "abort"
