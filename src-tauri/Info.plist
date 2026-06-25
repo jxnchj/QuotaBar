@@ -5,5 +5,9 @@
 	<!-- Menu-bar-only agent: no Dock icon, no app menu (operated entirely from the status bar). -->
 	<key>LSUIElement</key>
 	<true/>
+	<!-- Keep the 5-minute background refresh timer firing on schedule: stop macOS
+	     App Nap from throttling/suspending this idle menu-bar agent. -->
+	<key>NSAppSleepDisabled</key>
+	<true/>
 </dict>
 </plist>
